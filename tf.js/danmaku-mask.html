@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>danmaku mask demo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dplayer@1.25.0/dist/DPlayer.min.css">
+</head>
+
+<body>
+  <div id="dplayer1"></div>
+  <img id="output">
+</body>
+
+<!-- Load TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.2.9"></script>
+
+<!-- Load BodyPix -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@1.0.0"></script>
+
+<!-- 一个弹幕播放器 -->
+<script src="https://cdn.jsdelivr.net/npm/dplayer@1.25.0/dist/DPlayer.min.js"></script>
+
+<script>
+  function imagedata_to_dataurl(imagedata) {
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    canvas.width = imagedata.width;
+    canvas.height = imagedata.height;
+    ctx.putImageData(imagedata, 0, 0);
+
+    return canvas.toDataURL();
+  }
+
+  // image - ImageData|HTMLImageElement|HTMLCanvasElement|HTMLVideoElement The input image to feed through the network.
+  async function getParser() {
+    var outputStride = 16; //  Must be 32, 16, 8, The higher the number, the faster the performance but slower the accuracy
+    var segmentationThreshold = 0.5;
+    const net = await bodyPix.load();
+
+    return async function parser(image) {
+      const personSegmentation = await net.estimatePersonSegmentation(image, outputStride, segmentationThreshold)
+
+      // by setting maskBackground to false, the maskImage that is generated will be opaque where there is a person and transparent where there is a background.
+      const maskBackground = true;
+      const maskImage = bodyPix.toMaskImageData(personSegmentation, maskBackground);
+      return maskImage /* imageData */
+    }
+  }
+
+  function captureImage(video, playerWidth) {
+    var canvas = document.createElement("canvas");
+    const scale = playerWidth / video.videoWidth
+
+    canvas.width = video.videoWidth * scale;
+    canvas.height = video.videoHeight * scale;
+    var context = canvas.getContext('2d')
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    var imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+    return imageData
+  }
+
+  async function main() {
+    window.dp1 = new DPlayer({
+      container: document.getElementById('dplayer1'),
+      preload: 'none',
+      screenshot: true,
+      video: {
+        url: 'https://api.dogecloud.com/player/get.mp4?vcode=5ac682e6f8231991&userId=17&ext=.mp4',
+        pic: 'https://i.loli.net/2019/06/06/5cf8c5d9c57b510947.png',
+        thumbnails: 'https://i.loli.net/2019/06/06/5cf8c5d9cec8510758.jpg'
+      },
+      subtitle: {
+        url: 'https://moeplayer.b0.upaiyun.com/dplayer/hikarunara.vtt'
+      },
+      danmaku: {
+        id: '9E2E3368B56CDBB4',
+        api: 'https://api.prprpr.me/dplayer/',
+        addition: ['https://cn-south-17-dplayer-49648867.oss.dogecdn.com/1678963.json']
+      }
+    });
+
+    const videoEle = document.querySelector('video.dplayer-video')
+    const danmakuContainer = document.querySelector('.dplayer-danmaku')
+    const dplayer1 = document.getElementById('dplayer1')
+    const output = document.getElementById('output')
+
+    const playerWidth = 500
+    dplayer1.style.width = `${playerWidth}px`
+
+    const parser = await getParser()
+
+    async function loop() {
+      const imageData = captureImage(videoEle, playerWidth)
+      const maskImage = await parser(imageData) // 直接传入HTMLVideoElement报错了... 暂时一帧一帧从视频抓
+
+      const dataurl = imagedata_to_dataurl(maskImage)
+      danmakuContainer.style.webkitMaskImage = `url(${dataurl})`
+      output.src = dataurl
+    }
+
+    let intervelId = null
+    videoEle.addEventListener("playing", () => { intervelId = setInterval(loop, 100); });
+    videoEle.addEventListener("ended", () => { if (intervelId) clearInterval(intervelId) });
+    videoEle.addEventListener("pause", () => { if (intervelId) clearInterval(intervelId) });
+  }
+
+  main()
+
+</script>
+
+</html>
